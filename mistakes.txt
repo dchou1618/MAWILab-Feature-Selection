@@ -1,0 +1,3 @@
+- wary of proto3 vs. proto2 
+  - using proto3 because it's less verbose
+- attribute variables may not be updated unless kernel is RESTARTED
