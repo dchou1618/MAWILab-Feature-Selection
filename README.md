@@ -13,5 +13,6 @@ attributes seem to indicate that flagging perhaps is
 what could be causing the label to result in 
 normal or one of the probing attacks. Xmas sends
 packets of with FIN, URG, and PUSH flags "lit up like 
-a christmas tree" and other port scanning methods 
-use flagging patterns.
+a christmas tree", which could explain why these flags appear to be the driving
+features for causing an observation to be labeled as normal or 
+not.
