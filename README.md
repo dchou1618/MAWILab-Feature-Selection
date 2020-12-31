@@ -16,3 +16,6 @@ packets of with FIN, URG, and PUSH flags "lit up like
 a christmas tree", which could explain why these flags appear to be the driving
 features for causing an observation to be labeled as normal or 
 not.
+  - From running wireshark for packet capture in real-time, one can run `sudo nmap -sX [routerIP]`
+  to test how a local router may respond to an xmas tree scan. -sX is the tag indicating xmas
+  that will flip on the flags urg, fin and push.
