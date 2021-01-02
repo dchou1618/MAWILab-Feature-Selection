@@ -22,4 +22,5 @@ not.
 
 Looking ahead, there can be more work done to improve the accuracy of predictions with
 the random forest model fit to the data. Because there is much more normal data, one
-can either do oversampling of minority classes or undersampling of majority classes.
+can either do oversampling of minority classes or undersampling of majority classes to handle
+the imbalance in classes.
