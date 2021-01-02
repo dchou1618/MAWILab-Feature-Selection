@@ -19,3 +19,7 @@ not.
   - From running wireshark for packet capture in real-time, one can run `sudo nmap -sX [routerIP]`
   to test how a local router may respond to an xmas tree scan. -sX is the tag indicating xmas
   that will flip on the flags urg, fin and push.
+
+Looking ahead, there can be more work done to improve the accuracy of predictions with
+the random forest model fit to the data. Because there is much more normal data, one
+can either do oversampling of minority classes or undersampling of majority classes.
