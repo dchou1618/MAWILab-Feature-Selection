@@ -25,4 +25,4 @@ the random forest model fit to the data. Because there is much more normal data,
 can either do oversampling of minority classes or undersampling of majority classes to handle
 the imbalance in classes.
 
-  -   Implemented SMOTE with LSTM
+  -   Implemented SMOTE with LSTM Neural Network in keras
