@@ -2,4 +2,4 @@
 
 **Causal Inference Without Models**
 1. In the case of discrete outcomes, if we can access the outcome of a subject with and without treatment *A*, then we can access whether there was a causal effect. With notation, we can define what a causal effect on an individual means: Suppose that $Y^{a=1}$ is the outcome of survival for a subject if they did receive treatment $A$. Then $Y^{a=1} \neq Y^{a=0}$ indicates a causal effect. Individual causal effects cannot be observed because of missing data from one of the two $Y$ counterfactual outcomes. Our *assumption* with counterfactual outcomes is that they cannot interfere with one another. Otherwise, outcomes would not be well-defined and would need to be qualified with statements indicating "no interaction between units", for instance.
-2. Instead of individual causal effects, average treatment effects .
+2. Instead of comparing discrete outcomes of individual causal effects, we can compare probabilities of the same outcome occurring after receiving or not receiving a treatment (an average treatment effect). By definition, an average treatment effect is present if $P[Y^{a=1}=1] \neq P[Y^{a=0}=1]$.
