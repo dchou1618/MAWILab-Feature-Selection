@@ -17,8 +17,11 @@
 
 8. In crossover experiments, we may want to observe the outcomes of two different treatments at time steps $t=0$ and $t=1$ under these conditions: (1) No carryover effects from the treatment (2) individual causal effect does not change over time (3) The counterfactual outcome under no treatment does not depend on time. 
 
+9. Consider two experimental designs: (1) we randomly select 65% of individuals from a population and transplant a new heart to each of them (13/20 treated individuals) or (2) classify all individuals as being in critical or noncritical condition and have assign treatment to 75% of critical & 25% of noncritical. **Conditional randomization** is an experimental design that uses randomization probabilities that depend on the condition groups of the patients (critical vs. noncritical conditions) - conditional randomization can be multiple marginal randomizations applied to data sub-groups. **Marginally randomized experiments** refer to those mentioned in (1) that apply same randomization probability to all subjects. Conditional randomization does not guarantee marginal exchangeability, but it does **ensure conditional exchangeability** - $Y^{a}$ independent of A given subgroup L. 
+
 **Causal Inference With Models**
 
 1. Why use models? When we restrict ourselves to estimators of the data, we reach challenges with undefined estimations.
 
 2. Variable selection for causal inference may introduce biases in the effect estimate. Suppose we want to unbiasedly measure the average treatment effect $A$ on outcome $Y$: $E[Y^{a=1}]-E[Y^{a=0}]$. Covariate adjustment would be to eliminate as much confounding as possible using the information in the variables $X$. Adjustments, to account for confounding, of all variables may induce bias.
+3. 
