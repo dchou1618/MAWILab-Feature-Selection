@@ -1,6 +1,6 @@
 ---
-title: "arima-imputation"
-author: "Dylan"
+title: "Feature Importance"
+author: "Dylan Chou"
 date: "12/27/2020"
 output: pdf_document
 ---
@@ -12,9 +12,6 @@ portScanDf = read.csv("portScan_data2.csv")
 
 ```{r}
 head(portScanDf)
-```
-
-```{r}
 # hping_ack, hping_fin, hping_xmas have all NaN tcp_options_mss_val
 table(portScanDf[is.na(portScanDf$tcp_options_mss_val),]$label)
 table(portScanDf$label)
@@ -23,7 +20,6 @@ table(portScanDf$label)
 ```{r}
 library(dplyr)
 library(hexbin)
-require(forecast)
 ```
 
 ```{r}
@@ -62,115 +58,17 @@ system.time(plot(hexbin(zmapDf$frame_info_time, zmapDf$frame_info_len),
                  main="zmap Frame Length vs. zmap Time"))
 ```
 
-## ARIMA model to impute missing values in time series
-```{r}
-# based on prior inspection, imputing ip_id may not be good due to unique ids. 
-# quantitative 
-# - tcp_options_mss_val
-n = length(names(portScanDf))
-#names(portScanDf)
-names(portScanDf)[c(2,4:5,10,n)]
-regDf = portScanDf[!is.na(portScanDf$tcp_options_mss_val),]
-xreg = as.matrix(regDf[,names(portScanDf)[c(2,4:5,10,n)]])
-model = forecast::auto.arima(regDf$tcp_options_mss_val, 
-                             xreg=xreg,max.order=5)
-
-```
-
 
 ```{r}
-summary(model)
-```
-
-```{r}
-library(devtools)
-install_github("SteffenMoritz/imputeTS")
-```
-
-```{r}
-library(imputeTS)
-```
-
-```{r}
-model2 = na_kalman(portScanDf$tcp_options_mss_val, model = "auto.arima")
-```
-
-```{r}
-newMssVals = model2
-portScanDf$tcp_options_mss_val = newMssVals
-head(portScanDf)
-```
-
-
-```{r}
-write.csv(portScanDf,"newPortData.csv")
-```
-
-
-```{r}
-#if (!requireNamespace("BiocManager", quietly = TRUE))
-#    install.packages("BiocManager")
-#BiocManager::install("graph")
-#if (!requireNamespace("BiocManager", quietly = TRUE))
-#    install.packages("BiocManager")
-#BiocManager::install("RBGL")
-library(pcalg)
-library(SMPracticals)
-
-```
-
-```{r}
-library(dplyr)
-newPortData = read.csv("newPortData.csv")
-numericPortData = newPortData %>% select(!(c("X.1","X","frame_info_time_epoch","ip_src","ip_dst")))
-```
-
-```{r}
-head(numericPortData)
-#BiocManager::install("Rgraphviz")
-```
-## Identifying Causal Structures
-```{r}
-suffStat = list(C=cor(numericPortData),n=nrow(numericPortData))
-pcFit = pc(suffStat, indepTest=gaussCItest, p=ncol(numericPortData),alpha=0.005)
-library(Rgraphviz)
-plot(pcFit,labels=colnames(numericPortData),main="Inferred DAG for numericPortData")
-```
-
-```
-It seems that causal structures are identified between ip_checksum and
-tcp_options_mss_val. Also between ip_ttl and tcp_options_mss_val. These
-structures only assume correctness if we have no unmeasured confounders.
-However,  unmeasured confounders are not testable. If we run a randomized
-experiment, this can present some semblance of "no unmeasured confounders".
-We notice that there are some backdoor paths in the DAG from frame_info_number 
-to tcp_len. Conditioning on frame_info_number can block this backdoor path. 
-```
-
-```{r}
-library(ipw)
-weights1 = ipwtm(exposure=label,family='multinomial',
-      timevar=frame_info_time, id=ip_id,
-      type="first",
-      numerator= ~ tcp_len + tcp_flags + tcp_options_mss_val,
-      denominator= ~ ip_ttl  + tcp_len + tcp_flags + tcp_options_mss_val,
-      data=newPortData)
-```
-
-```{r}
-library(survey)
-msm = (svyglm(label ~ ip_ttl  + tcp_len + tcp_flags + tcp_options_mss_val,
-       design = svydesign(~1, weights = ~weights1$ipw.weights, data=newPortData)))
-coef(msm)
-confint(msm)
-```
-
-```{r}
+# 5-10 mins
 set.seed(402)
-library(nnet)
+# library(nnet)
 library(dplyr)
 require(randomForest)
 require(caTools)
+newPortData = read.csv("newPortData.csv")
+numericPortData = newPortData %>% select(!(c("X.1","X","frame_info_time_epoch","ip_src","ip_dst")))
+
 fullModelData = numericPortData %>% dplyr::select(!(c("frame_info_time",
                                            "frame_info_number",
                                            "ip_id","ip_flags_df")))
@@ -190,32 +88,59 @@ smp = sample.split(fullModelData$label, SplitRatio = .75)
 train = subset(fullModelData, smp == TRUE)
 test  = subset(fullModelData, smp == FALSE)
 
-rfProbe = randomForest(label ~ ., data=fullModelData)
-
 ```
 
 ```{r}
-rfProbe
-write.csv(fullModelData,"fullProbeData.csv")
 library(caret)
-varImp(rfProbe)
+subsetModelData = train[sample(nrow(train),nrow(train)*0.10),]
 ```
 
 ```{r}
-#library(tidyverse)
-fakeModelData = fullModelData
+# rejection method
+# create rectangle
+
+fakeModelData = subsetModelData
+
+# Idea: https://web.mit.edu/urban_or_book/www/book/chapter7/7.1.3.html 
+rejection_sampling = function(min_x, width, height, f) {
+  val = NULL
+  while(1){
+     rand_y = runif(1,0,1)
+     rand_x = runif(1,0,1)
+     
+     sampled_x = min_x+rand_x*width
+     sampled_y = rand_y*height
+     density_peak = f(sampled_x)
+     if(sampled_y < density_peak){
+       val = sampled_x
+       break
+     }
+  }
+  return(val)
+}
+
 randomGenCol = function(col,data,isInteger=TRUE) {
    set.seed(402)
-   fakeSD = sd(col)
-   if (isInteger) {
-      return(col+sample(c(0,fakeSD),
-             size=nrow(data),replace=TRUE))
-   } else {
-      return(col+runif(n=nrow(data), min=0,max=fakeSD))
+   min_x = min(col)
+   width = max(col)-min(col)
+   density_col = density(col)
+   f = approxfun(density_col$x, density_col$y)
+   height = max(density_col$y)
+   vals = c()
+   for (i in 1:nrow(data)) {
+     if(i%%5000 == 0 && i > 0){
+       print(i)
+     }
+    vals = c(vals,rejection_sampling(min_x, width, height, f))
    }
+   return(vals)
 }
+```
+
+```{r}
 categoricalGenCol = function(col,data,isFactor=TRUE) {
    categories = as.list(as.data.frame(table(col)))
+   # contains the levels
    vars = categories$col
    props = categories$Freq/nrow(data)
    if (isFactor) {
@@ -230,6 +155,10 @@ categoricalGenCol = function(col,data,isFactor=TRUE) {
                            prob = props)))
    }
 }
+
+```
+
+```{r}
 
 fakeModelData$fakeFrameInfoLen = randomGenCol(fakeModelData$frame_info_len,fakeModelData)
 fakeModelData$fakeFrameInfoCapLen = randomGenCol(fakeModelData$frame_info_cap_len,fakeModelData)
@@ -260,19 +189,39 @@ fakeModelData$fakeTCPOptionsMSSVal = randomGenCol(fakeModelData$tcp_options_mss_
 ```
 
 ```{r}
-fakeRFProbe = randomForest(label ~ ., data=fakeModelData)
-varImp(fakeRFProbe)
+fakeModelData = fakeModelData[ , grepl( "fake" , colnames(fakeModelData) ) ]
+```
+
+```{r}
+fakeModelData$label = subsetModelData$label
+```
+
+```{r}
+# 
+RFProbe = rfsrc(label ~ ., data=subsetModelData)
+fakeRFProbe = rfsrc(label ~ ., data=fakeModelData)
 
 ```
 
+```{r}
+require(parallel)
+require(data.tree)
+require(DiagrammeR)
+require(randomForestSRC)
+```
+
+```{r}
+varImp(RFProbe)
+varImp(fakeRFProbe)
+```
 
 ```
 A few things to note about feature importance changes when
 introducing randomly generated columns into the data 
 frame is that the feature importances from fake variables
-that appear to be drastically lower are from ip_flags,
-ip_dsfield, tcp_seq, tcp_flags_fin, tcp_flags_urg, 
-and tcp_flags_push. These
+that appear to be drastically lower are from
+ip_dsfield, tcp_seq, tcp_flags_fin, tcp_flags_urg, tcp_flags,
+TCPFlagsCwr, and tcp_flags_push. These
 attributes seem to indicate that flagging perhaps is 
 what could be causing the label to result in 
 normal or one of the probing attacks. Xmas sends
