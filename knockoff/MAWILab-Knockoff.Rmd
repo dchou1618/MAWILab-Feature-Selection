@@ -1,0 +1,367 @@
+---
+title: "Feature Importance"
+author: "Dylan Chou"
+date: "12/27/2020"
+output: pdf_document
+---
+
+## EDA
+```{r}
+portScanDf = read.csv("portScan_data2.csv")
+```
+
+```{r}
+head(portScanDf)
+# hping_ack, hping_fin, hping_xmas have all NaN tcp_options_mss_val
+table(portScanDf[is.na(portScanDf$tcp_options_mss_val),]$label)
+table(portScanDf$label)
+```
+
+```{r}
+library(dplyr)
+library(hexbin)
+```
+
+```{r}
+names(portScanDf)
+hist(portScanDf$frame_info_cap_len,col="blue")
+barplot(table(portScanDf$label),col="blue")
+hist(portScanDf$tcp_len,col="blue")
+```
+
+```{r}
+table(portScanDf$label)
+nrow(portScanDf)
+```
+
+```{r}
+system.time(plot(hexbin(portScanDf$frame_info_time,portScanDf$frame_info_len),
+                 xlab="All Time",
+                 ylab="All Frame Length",
+                 main="All Frame Length vs. All Time"))
+```
+
+```{r}
+nmapSynDf = portScanDf %>% filter(portScanDf$label == "11")
+
+system.time(plot(hexbin(nmapSynDf$frame_info_time, nmapSynDf$frame_info_len),
+                 xlab="nmap_syn Time",
+                 ylab="nmap_syn Frame Length",
+                 main="nmap_syn Frame Length vs. nmap_syn Time"))
+```
+
+```{r}
+zmapDf = portScanDf %>% filter(portScanDf$label == "4")
+system.time(plot(hexbin(zmapDf$frame_info_time, zmapDf$frame_info_len),
+                 xlab="zmap Time",
+                 ylab="zmap Frame Length",
+                 main="zmap Frame Length vs. zmap Time"))
+```
+
+
+```{r}
+# 5-10 mins
+set.seed(402)
+# library(nnet)
+library(dplyr)
+require(randomForest)
+require(caTools)
+newPortData = read.csv("newPortData.csv")
+numericPortData = newPortData %>% select(!(c("X.1","X","frame_info_time_epoch","ip_src","ip_dst",
+                                             "tcp_srcport",
+                                             "tcp_dstport")))
+
+fullModelData = numericPortData %>% dplyr::select(!(c("frame_info_time",
+                                           "frame_info_number",
+                                           "ip_id","ip_flags_df")))
+fullModelData$ip_flags = as.factor(fullModelData$ip_flags)
+fullModelData$ip_dsfield = as.factor(fullModelData$ip_dsfield)
+fullModelData$tcp_flags_fin = as.factor(fullModelData$tcp_flags_fin)
+fullModelData$tcp_flags_syn = as.factor(fullModelData$tcp_flags_syn)
+fullModelData$tcp_flags_reset = as.factor(fullModelData$tcp_flags_reset)
+fullModelData$tcp_flags_push = as.factor(fullModelData$tcp_flags_push)
+fullModelData$tcp_flags_ack = as.factor(fullModelData$tcp_flags_ack)
+fullModelData$tcp_flags_urg = as.factor(fullModelData$tcp_flags_urg)
+fullModelData$tcp_flags_cwr = as.factor(fullModelData$tcp_flags_cwr)
+fullModelData$tcp_flags = as.factor(fullModelData$tcp_flags)
+
+fullModelData$ip_dsfield = as.factor(fullModelData$ip_dsfield)
+fullModelData$tcp_urgent_pointer = as.factor(fullModelData$tcp_urgent_pointer)
+
+fullModelData$tcp_hdr_len = as.factor(fullModelData$tcp_hdr_len)
+fullModelData$frame_info_cap_len = as.factor(fullModelData$frame_info_cap_len)
+
+fullModelData$label = as.factor(fullModelData$label)
+# sample splitting
+smp = sample.split(fullModelData$label, SplitRatio = .75)
+train = subset(fullModelData, smp == TRUE)
+test  = subset(fullModelData, smp == FALSE)
+
+```
+
+```{r}
+library(caret)
+subsetModelData = train[sample(nrow(train),nrow(train)*0.05),]
+```
+
+```{r}
+# judging numerical variables
+hist(subsetModelData$ip_ttl)
+hist(subsetModelData$ip_checksum)
+hist(subsetModelData$tcp_window_size)
+hist(subsetModelData$tcp_checksum)
+hist(subsetModelData$tcp_options_mss_val)
+```
+```{r}
+for (col in c("frame_info_len",
+              "ip_ttl", "ip_checksum","tcp_window_size",
+            "tcp_checksum","tcp_options_mss_val",
+            "tcp_ack","ip_len","tcp_len",
+            "tcp_seq")){
+  q = quantile(subsetModelData[,col])
+  subsetModelData[,col] = tryCatch(expr={cut(subsetModelData[,col], 
+                             breaks = c(q[["0%"]]-1,
+                                        q[["25%"]],
+                                        q[["50%"]],
+                                        q[["75%"]],
+                                        q[["100%"]]+1),
+                           labels=c("1","2","3","4")) },
+           error=function(e){
+             q = quantile(subsetModelData[,col],
+                          na.rm = T,probs = c(0,0.10, 0.5, 0.9, 1))
+             if (col == "frame_info_len"){
+               cut(subsetModelData[,col],
+                   breaks=c(-1,74,1440,(max(subsetModelData[,col])-
+                              1440)/2,
+                            max(subsetModelData[,col])+1),
+                   labels=c("1","2","3","4"))
+             } else if (col=="tcp_ack"){
+               cut(subsetModelData[,col],
+                   breaks=c(-1,1,2,(max(subsetModelData[,col])-2)/2,
+                            max(subsetModelData[,col])+1),
+                   labels=c("1","2","3","4"))
+             } else if (col=="ip_len") {
+               cut(subsetModelData[,col],
+                   breaks=c(-1,40,52,(max(subsetModelData[,col])-
+                              52)/2,
+                            max(subsetModelData[,col])+1),
+                   labels=c("1","2","3","4"))
+             } else if (col=="tcp_len") {
+               cut(subsetModelData[,col],
+                   breaks=c(-1,1374,1447,(max(subsetModelData[,col])-1447)/2,
+                            max(subsetModelData[,col])+1),
+                   labels=c("1","2","3","4"))
+             } else if (col=="tcp_seq"){
+               cut(subsetModelData[,col],
+                   breaks=c(-1,1,3,
+                            (max(subsetModelData[,col])-3)/2,
+                            max(subsetModelData[,col])+1))
+             } else {
+               cut(subsetModelData[,col], 
+                               breaks = c(q[["0%"]]-1,
+                                          q[["10%"]],
+                                          q[["50%"]],
+                                          q[["90%"]],
+                                          q[["100%"]]+1),
+                             labels=c("1","2","3","4"))
+             }
+           }
+           )
+}
+```
+
+```{r}
+# Binning 
+connections = list()
+columns = colnames(subsetModelData)
+for(k1_i in 1:length(columns)){
+  print(k1_i)
+  print(columns[k1_i])
+  for(k2_i in 1:length(columns)) {
+    if (columns[k1_i] != columns[k2_i]){
+      tryCatch(expr={if (fisher.test(table(subsetModelData[,columns[k1_i]],
+                                          subsetModelData[,columns[k2_i]]),
+                                     simulate.p.value = T)$p.value >= 0.05){
+        if (is.null(connections[[paste(k1_i)]])){
+          connections[[paste(k1_i)]] = c(k2_i)
+        } else{
+          connections[[paste(k1_i)]] = c(connections[[paste(k1_i)]],k2_i)
+        }
+      }},
+    error=function(e){print(e)})
+    }
+  }
+}
+```
+
+```{r}
+random_max_indep_set = function(connections, subsetModelData, iterations=200) {
+  sets = list()
+  for (i in 1:iterations){
+    ongoing_independence_pool = c(NA)
+    selected_vars = c()
+    selected_var_names = c()
+    while (length(ongoing_independence_pool) > 0){
+      if (length(ongoing_independence_pool) == 1 && is.na(ongoing_independence_pool[1])) {
+        var_int = sample(names(connections),1)
+        ongoing_independence_pool = connections[[paste(var_int)]]
+        selected_vars = c(selected_vars, var_int)
+        selected_var_names = c(selected_var_names, 
+                               colnames(subsetModelData[as.integer(var_int)]))
+      } else {
+        viable_vars = c()
+        for (x in ongoing_independence_pool){
+          viable=T
+          for (var in selected_vars){
+            if (!(x %in% connections[[paste(var)]]) || !(var %in% connections[[paste(x)]]) ){
+              viable = F
+            }
+          }
+          if (viable && !(x %in% selected_vars)){
+            viable_vars = c(viable_vars, x)
+          }
+        }
+        viable_vars = unique(viable_vars)
+        if (length(viable_vars)==0){
+          break
+        }
+        if (length(viable_vars)==1){
+          random_var = viable_vars[1]
+        } else {
+          random_var = sample(viable_vars, 1)
+        }
+        ongoing_independence_pool = setdiff(viable_vars, random_var)
+        selected_vars = c(selected_vars, random_var)
+        selected_var_names = c(selected_var_names, colnames(subsetModelData)[random_var])
+      }
+    }
+    sets[[paste(i)]] = selected_var_names
+  }
+  return(sets)
+}
+```
+
+```{r}
+sets = random_max_indep_set(connections, subsetModelData, 8000)
+seen = c()
+feature_sets = list()
+feature_set_num = 1
+for (lst in sets[order(sapply(sets,length),decreasing=T)]){
+  new_seen = union(seen, lst) 
+  if (length(new_seen) > length(seen)) {
+    seen = new_seen
+    feature_sets[[paste(feature_set_num)]] = lst 
+  }
+  feature_set_num = feature_set_num + 1
+}
+
+```
+
+
+```{r}
+# rejection method
+# create rectangle
+
+fakeModelData = subsetModelData[,feature_sets[[1]]]
+
+# Idea: https://web.mit.edu/urban_or_book/www/book/chapter7/7.1.3.html 
+rejection_sampling = function(min_x, width, height, f) {
+  val = NULL
+  while(1){
+     rand_y = runif(1,0,1)
+     rand_x = runif(1,0,1)
+     
+     sampled_x = min_x+rand_x*width
+     sampled_y = rand_y*height
+     density_peak = f(sampled_x)
+     if(sampled_y < density_peak){
+       val = sampled_x
+       break
+     }
+  }
+  return(val)
+}
+
+# generates random quantities for continuous variables
+randomGenCol = function(col,data,isInteger=TRUE) {
+   set.seed(402)
+   min_x = min(col)
+   width = max(col)-min(col)
+   density_col = density(col)
+   f = approxfun(density_col$x, density_col$y)
+   height = max(density_col$y)
+   vals = c()
+   for (i in 1:nrow(data)) {
+     if(i%%5000 == 0 && i > 0){
+       print(i)
+     }
+    vals = c(vals,rejection_sampling(min_x, width, height, f))
+   }
+   return(vals)
+}
+```
+
+```{r}
+categoricalGenCol = function(col,data,isFactor=TRUE) {
+   categories = as.list(as.data.frame(table(col)))
+   # contains the levels
+   vars = categories$col
+   props = categories$Freq/nrow(data)
+   if (isFactor) {
+      return(as.factor(sample(as.vector(vars), 
+                           size=nrow(data),
+                           replace=TRUE, 
+                           prob = props)))
+   } else {
+      return(as.integer(sample(as.vector(vars), 
+                           size=nrow(data),
+                           replace=TRUE, 
+                           prob = props)))
+   }
+}
+
+```
+
+```{r}
+for (col in colnames(fakeModelData)){
+  fakeModelData[,col] = categoricalGenCol(fakeModelData[,col],fakeModelData)
+}
+
+```
+
+```{r}
+fakeModelData$label = subsetModelData$label
+```
+
+```{r}
+subsetModelData = subsetModelData[,c(colnames(fakeModelData))]
+```
+
+```{r}
+# 
+RFProbe = randomForest(label ~ ., data=subsetModelData)
+fakeRFProbe = randomForest(label ~ ., data=fakeModelData)
+
+```
+
+```{r}
+varImp(RFProbe)
+varImp(fakeRFProbe)
+```
+
+```
+A few things to note about feature importance changes when
+introducing randomly generated columns into the data 
+frame is that the feature importances from fake variables
+that appear to be drastically lower are from
+ip_flags and tcp_flags_syn. These
+attributes seem to indicate that flagging perhaps is 
+what could be causing the label to result in 
+normal or one of the probing attacks. Xmas attacks,
+for instance, send packets of with FIN, URG, and 
+PUSH flags "lit up like a christmas tree" and
+other port scanning methods use flagging patterns.
+```
+
+
+
